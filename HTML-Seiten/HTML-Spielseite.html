@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Spiel</title>
+</head>
+<style></style>
+<body>
+    <p>Herzlich willkommen zum Spielen</p>
+</body>
+<script src="./p5.min.js"></script>
+<script src="./spieler.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.min.js"></script>
+<script> 
+let spieler = new Spieler(250,250)
+let frameCounter = 0;
+let shoot = false;
+let vwin = false;
+let wlost = false;
+//let projekArray = [];
+let projektil = {
+  x:0,
+  y:0
+}
+projektil.x = x;
+projektil.y = y;
+let hitcounter = 0;
+let deadcounter = 0;
+let k = false;
+let gif;
+let gif2;
+let img;
+function preload() {
+  gif2 = new Gif({
+    workers: 2,
+    quality: 20
+  });
+}
+function preload() {
+  gif = new Gif({
+    workers: 2,
+    quality: 10
+  });
+}
+function preload(){ gif = loadImage('/Bilder/4hsr.gif');};
+function preload() {gif2 = loadImage('/Bilder/tenor.gif');};
+function setup() {
+  createCanvas(500, 500);
+//  gif.on('finished', function(blob) {
+    // Create image from blob url
+//    img = createImg(URL.createObjectURL(blob), '/Bilder/4hsr.gif');
+//    img.hide();
+//    image(img, 0, 0);
+//    });
+  describe(
+    'A gray square with a black circle at its center. The circle moves when the user presses an arrow key. It leaves a trail as it moves.'
+  );
+}
+
+
+function draw() { // Diese wird für jedes Bild erneut ausgeführt
+  
+    background('green');
+
+  // Update x and y if an arrow key is pressed.
+ 
+
+    
+  
+
+
+let i = 0;
+if ((keyIsDown(32) === true) && (frameCounter >= 100)) {
+
+      projekArray.push({x: x,y: y}); // Erstellen eines neuen Objekts und Hinzufügen zum Array
+
+    frameCounter = 0;
+    k=false; // Zähler zurücksetzen, um das Schießen zu verhindern, bis 100 Frames vergangen sind
+ }
+
+ projekArray = projekArray.filter((obj, i) => {
+  if (obj.x >= 500) {
+    return false; // Entfernt das Element aus dem resultierenden Array
+  } else {
+    circle(obj.x, obj.y, 5);
+    obj.x++; // Aktualisiert die x-Position des Projektils
+    return true; // Behält das Element im resultierenden Array
+  }
+});
+//    projekArray.forEach((obj,i) => {
+//      if(obj.x >= 500){
+//        projekArray.splice(i,1)
+//      }else{
+//        circle(obj.x,obj.y,5)
+//        projekArray[i].x++
+//      }
+//    })
+    frameCounter++;
+//   if (keyIsDown(32) === true && (millis() - lastShotTime) > shotInterval) {
+//    z.push({ x: x, y: y }); // Fügt die Kugel zum Array z hinzu
+//    lastShotTime = millis(); // Aktualisiert den Zeitpunkt des letzten Schusses
+// }
+
+ // Bewegt und zeichnet die Kugeln
+// z.forEach((obj, i) => {
+//    if (obj.x >= 500) {
+//      z.splice(i, 1); // Entfernt die Kugel, wenn sie den rechten Rand erreicht hat
+//    } else {
+//      z[i].x++; // Bewegt die Kugel nach rechts
+//      circle(obj.x, obj.y, 5); // Zeichnet die Kugel
+//    }
+// });
+// immer mit FRAMES ARBEITEN statt Millisekunden !!!!!!!!!!!!!
+  
+  // if (keyIsDown(190) === true) {
+  //   while (b < 500) {
+  //     b++;
+  //     circle(a, b, 5);
+  //   };
+  //   }
+  
+  // Style the circle.
+  fill('#ffff00');
+
+  // Draw the circle.
+  
+  circle(projektil.x, projektil.y, 10);
+  if (vwin==true) {
+    image(gif, (projektil.x -15), (projektil.y -15), 30, 30);
+  }
+  if (wlost==true) {
+    image(gif2, (x-15), (y-15), 30, 30);
+  }
+}
+//function explode(projektil.x, projektil.y, size, angle) {
+  // Berechnet die Richtung basierend auf dem Winkel
+//  let dc = cos(radians(angle)) * size;
+//  let dd = sin(radians(angle)) * size;
+
+  // Zeichnet Ellipsen in der Richtung der Explosion
+//  for (let p = 0; p < 360; p += 45) { // 8 Richtungen: oben, unten, links, rechts, oben-rechts, oben-links, unten-links, unten-rechts
+//    push();
+//    translate(projektil.x, projektil.y);
+//    rotate(radians(p));
+//    ellipse(0, 0, size, size);
+//    pop();
+//  }
+//}
+function alertGewinnFunktion() {
+  alert(`Sie haben ${hitcounter} mal gewonnen.`);
+  vwin == false;
+  k=true;
+  frameCounter=0;
+};
+function checkWin() {
+  console.log(projekArray);
+    for(let j = 0; j <= projekArray.length;j++){
+      if ((projektil.x  == projekArray[j].x ) && (projektil.y == projekArray[j].y) && (k == false)) {
+        hitcounter++;
+        vwin = true;
+        
+              
+//projekArray = [];
+setTimeout(alertGewinnFunktion, 100);
+k = true;
+frameCounter = 0;
+
+
+        
+}
+    }
+    
+    
+}
+
+
+function checkLost() {
+    if ((x==projektil.x) && (y==projektil.y) && (k==false) && (frameCounter >= 50)) {
+      deadcounter++;
+      wlost =true;
+         
+      function alertLostFunktion() {
+        alert(`Sie haben ${deadcounter} mal verloren`);
+        wlost = false;
+    }
+    setTimeout(alertLostFunktion, 500);
+    k=true;
+    frameCounter = 0;
+  }
+}
+
+setTimeout(function() {
+    k = true;
+    console.log("Variable k wurde auf true gesetzt.");
+}, 5000); // 500 Millisekunden entsprechen 0.5 Sekunden
+setInterval(checkWin, 1); // Alle 0.5 Sekunden checkWin aufrufen
+setInterval(checkLost, 1);
+// setInterval(checkLost, 500);
+</script>
+
+</html>

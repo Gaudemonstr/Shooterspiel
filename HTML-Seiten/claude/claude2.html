@@ -1,0 +1,942 @@
+Arena shooter · HTML
+Kopieren
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Arena Shooter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #game-container {
+            text-align: center;
+        }
+        h1 {
+            color: #e94560;
+            margin-bottom: 8px;
+            font-size: 28px;
+            text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        }
+        .controls {
+            color: #aaa;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        .controls span {
+            background: #333;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin: 0 3px;
+        }
+        #game-canvas {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            color: #fff;
+            font-size: 14px;
+            margin-top: 12px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+        #hud div {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .powerup-legend {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 11px;
+            color: #888;
+        }
+        .powerup-legend span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .powerup-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>🎮 Arena Shooter</h1>
+        <div class="controls">
+            <span>WASD</span> Bewegen | 
+            <span>Pfeiltasten</span> Schießen
+        </div>
+        <div id="game-canvas"></div>
+        <div id="hud">
+            <div>🏆 Punkte: <strong id="score">0</strong></div>
+            <div>👾 Gegner: <strong id="kills">0</strong> / 4 besiegt</div>
+            <div>⚡ Power-Ups: <strong id="powerups">-</strong></div>
+        </div>
+        <div class="powerup-legend">
+            <span><span class="powerup-dot" style="background: #2ecc71;"></span> +Leben</span>
+            <span><span class="powerup-dot" style="background: #9b59b6;"></span> Unsichtbar</span>
+            <span><span class="powerup-dot" style="background: #3498db;"></span> Schneller</span>
+            <span><span class="powerup-dot" style="background: #e74c3c;"></span> Schnellfeuer</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script>
+// ============ KONSTANTEN ============
+const CANVAS_WIDTH = 700;
+const CANVAS_HEIGHT = 500;
+const MAX_LIVES = 10;
+const ENEMY_LIVES = 5;
+const POWERUP_DURATION = 300; // Frames (ca. 5 Sekunden)
+
+// ============ PROJEKTIL KLASSE ============
+class Projektil {
+    constructor(x, y, dirX, dirY, isEnemy = false) {
+        this.x = x;
+        this.y = y;
+        this.dirX = dirX;
+        this.dirY = dirY;
+        this.speed = 6;
+        this.size = 6;
+        this.isEnemy = isEnemy;
+    }
+
+    update() {
+        this.x += this.dirX * this.speed;
+        this.y += this.dirY * this.speed;
+    }
+
+    draw() {
+        noStroke();
+        if (this.isEnemy) {
+            fill('#ff6b6b');
+            // Glüheffekt
+            for (let i = 3; i > 0; i--) {
+                fill(255, 107, 107, 50 / i);
+                circle(this.x, this.y, this.size + i * 4);
+            }
+            fill('#ff6b6b');
+        } else {
+            fill('#00ff88');
+            // Glüheffekt
+            for (let i = 3; i > 0; i--) {
+                fill(0, 255, 136, 50 / i);
+                circle(this.x, this.y, this.size + i * 4);
+            }
+            fill('#00ff88');
+        }
+        circle(this.x, this.y, this.size);
+    }
+
+    isOffScreen() {
+        return this.x < -10 || this.x > CANVAS_WIDTH + 10 || 
+               this.y < -10 || this.y > CANVAS_HEIGHT + 10;
+    }
+}
+
+// ============ SPIELER KLASSE ============
+class Spieler {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.baseSpeed = 3.5;
+        this.speed = this.baseSpeed;
+        this.size = 32;
+        this.lives = MAX_LIVES;
+        this.baseShotCooldown = 20;
+        this.shotCooldown = this.baseShotCooldown;
+        this.lastShot = 0;
+        this.direction = { x: 1, y: 0 }; // Schussrichtung
+        
+        // Power-Up Status
+        this.invisible = false;
+        this.invisibleTimer = 0;
+        this.speedBoost = false;
+        this.speedBoostTimer = 0;
+        this.rapidFire = false;
+        this.rapidFireTimer = 0;
+        
+        this.invincibleFrames = 0;
+    }
+
+    update() {
+        // Bewegung mit WASD
+        let moveX = 0;
+        let moveY = 0;
+        
+        if (keyIsDown(65)) moveX -= 1; // A
+        if (keyIsDown(68)) moveX += 1; // D
+        if (keyIsDown(87)) moveY -= 1; // W
+        if (keyIsDown(83)) moveY += 1; // S
+        
+        // Normalisieren für diagonale Bewegung
+        if (moveX !== 0 && moveY !== 0) {
+            moveX *= 0.707;
+            moveY *= 0.707;
+        }
+        
+        this.x += moveX * this.speed;
+        this.y += moveY * this.speed;
+        
+        // Im Spielfeld halten
+        this.x = constrain(this.x, this.size / 2, CANVAS_WIDTH - this.size / 2);
+        this.y = constrain(this.y, this.size / 2, CANVAS_HEIGHT - this.size / 2);
+        
+        // Schussrichtung mit Pfeiltasten
+        if (keyIsDown(LEFT_ARROW)) this.direction = { x: -1, y: 0 };
+        if (keyIsDown(RIGHT_ARROW)) this.direction = { x: 1, y: 0 };
+        if (keyIsDown(UP_ARROW)) this.direction = { x: 0, y: -1 };
+        if (keyIsDown(DOWN_ARROW)) this.direction = { x: 0, y: 1 };
+        
+        // Power-Up Timer
+        if (this.invisibleTimer > 0) {
+            this.invisibleTimer--;
+            if (this.invisibleTimer <= 0) this.invisible = false;
+        }
+        
+        if (this.speedBoostTimer > 0) {
+            this.speedBoostTimer--;
+            if (this.speedBoostTimer <= 0) {
+                this.speedBoost = false;
+                this.speed = this.baseSpeed;
+            }
+        }
+        
+        if (this.rapidFireTimer > 0) {
+            this.rapidFireTimer--;
+            if (this.rapidFireTimer <= 0) {
+                this.rapidFire = false;
+                this.shotCooldown = this.baseShotCooldown;
+            }
+        }
+        
+        if (this.invincibleFrames > 0) this.invincibleFrames--;
+    }
+
+    draw() {
+        push();
+        translate(this.x, this.y);
+        
+        // Blinken bei Unverwundbarkeit
+        if (this.invincibleFrames > 0 && frameCount % 6 < 3) {
+            pop();
+            return;
+        }
+        
+        // Unsichtbarkeitseffekt
+        if (this.invisible) {
+            drawingContext.globalAlpha = 0.3;
+        }
+        
+        // Schatten
+        fill(0, 0, 0, 40);
+        noStroke();
+        ellipse(2, 4, this.size, this.size * 0.6);
+        
+        // Körper
+        let bodyColor = this.speedBoost ? color(52, 152, 219) : color(46, 204, 113);
+        if (this.rapidFire) bodyColor = color(231, 76, 60);
+        
+        fill(bodyColor);
+        stroke(255, 255, 255, 100);
+        strokeWeight(2);
+        circle(0, 0, this.size);
+        
+        // Richtungsanzeiger
+        fill('#fff');
+        noStroke();
+        let indicatorX = this.direction.x * 10;
+        let indicatorY = this.direction.y * 10;
+        circle(indicatorX, indicatorY, 8);
+        
+        // Augen
+        fill('#fff');
+        circle(-5, -3, 8);
+        circle(5, -3, 8);
+        fill('#000');
+        circle(-4 + this.direction.x * 2, -3 + this.direction.y * 2, 4);
+        circle(6 + this.direction.x * 2, -3 + this.direction.y * 2, 4);
+        
+        drawingContext.globalAlpha = 1.0;
+        pop();
+        
+        // Lebensanzeige über Spieler
+        this.drawLives();
+    }
+
+    drawLives() {
+        let startX = this.x - 24;
+        let y = this.y - this.size / 2 - 12;
+        
+        for (let i = 0; i < MAX_LIVES; i++) {
+            if (i < this.lives) {
+                fill('#2ecc71');
+            } else {
+                fill('#555');
+            }
+            noStroke();
+            rect(startX + i * 5, y, 4, 8, 1);
+        }
+    }
+
+    shoot() {
+        if (frameCount - this.lastShot >= this.shotCooldown) {
+            this.lastShot = frameCount;
+            return new Projektil(
+                this.x + this.direction.x * this.size / 2,
+                this.y + this.direction.y * this.size / 2,
+                this.direction.x,
+                this.direction.y,
+                false
+            );
+        }
+        return null;
+    }
+
+    takeDamage() {
+        if (this.invincibleFrames > 0 || this.invisible) return false;
+        this.lives--;
+        this.invincibleFrames = 60; // 1 Sekunde Unverwundbarkeit
+        return this.lives <= 0;
+    }
+
+    applyPowerUp(type) {
+        switch(type) {
+            case 'health':
+                this.lives = min(this.lives + 2, MAX_LIVES);
+                break;
+            case 'invisible':
+                this.invisible = true;
+                this.invisibleTimer = POWERUP_DURATION;
+                break;
+            case 'speed':
+                this.speedBoost = true;
+                this.speed = this.baseSpeed * 3;
+                this.speedBoostTimer = POWERUP_DURATION;
+                break;
+            case 'rapidfire':
+                this.rapidFire = true;
+                this.shotCooldown = Math.floor(this.baseShotCooldown / 3);
+                this.rapidFireTimer = POWERUP_DURATION;
+                break;
+        }
+    }
+
+    getActivePowerUps() {
+        let active = [];
+        if (this.invisible) active.push('👻');
+        if (this.speedBoost) active.push('⚡');
+        if (this.rapidFire) active.push('🔥');
+        return active.length > 0 ? active.join(' ') : '-';
+    }
+}
+
+// ============ GEGNER KLASSE ============
+class Gegner {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.speed = 1.5 + random(0.5);
+        this.size = 28;
+        this.lives = ENEMY_LIVES;
+        this.maxLives = ENEMY_LIVES;
+        this.shotCooldown = 60 + Math.floor(random(40));
+        this.lastShot = 0;
+        this.direction = { x: 0, y: 0 };
+        this.moveTimer = 0;
+        this.invincibleFrames = 0;
+        
+        this.chooseNewDirection();
+    }
+
+    chooseNewDirection() {
+        // Zufällige Richtung wählen
+        let dirs = [
+            { x: 1, y: 0 }, { x: -1, y: 0 },
+            { x: 0, y: 1 }, { x: 0, y: -1 }
+        ];
+        let dir = random(dirs);
+        this.moveDir = dir;
+        this.moveTimer = 30 + Math.floor(random(60));
+    }
+
+    update(playerX, playerY) {
+        // Bewegung
+        this.moveTimer--;
+        if (this.moveTimer <= 0) {
+            this.chooseNewDirection();
+        }
+        
+        // Manchmal Richtung zum Spieler
+        if (random() < 0.02) {
+            let dx = playerX - this.x;
+            let dy = playerY - this.y;
+            if (Math.abs(dx) > Math.abs(dy)) {
+                this.moveDir = { x: dx > 0 ? 1 : -1, y: 0 };
+            } else {
+                this.moveDir = { x: 0, y: dy > 0 ? 1 : -1 };
+            }
+        }
+        
+        this.x += this.moveDir.x * this.speed;
+        this.y += this.moveDir.y * this.speed;
+        
+        // Im Spielfeld halten
+        if (this.x < this.size / 2 || this.x > CANVAS_WIDTH - this.size / 2) {
+            this.moveDir.x *= -1;
+            this.x = constrain(this.x, this.size / 2, CANVAS_WIDTH - this.size / 2);
+        }
+        if (this.y < this.size / 2 || this.y > CANVAS_HEIGHT - this.size / 2) {
+            this.moveDir.y *= -1;
+            this.y = constrain(this.y, this.size / 2, CANVAS_HEIGHT - this.size / 2);
+        }
+        
+        // Schussrichtung zum Spieler berechnen
+        let dx = playerX - this.x;
+        let dy = playerY - this.y;
+        
+        // In eine der 4 Richtungen schießen
+        if (Math.abs(dx) > Math.abs(dy)) {
+            this.direction = { x: dx > 0 ? 1 : -1, y: 0 };
+        } else {
+            this.direction = { x: 0, y: dy > 0 ? 1 : -1 };
+        }
+        
+        if (this.invincibleFrames > 0) this.invincibleFrames--;
+    }
+
+    draw() {
+        push();
+        translate(this.x, this.y);
+        
+        // Blinken bei Schaden
+        if (this.invincibleFrames > 0 && frameCount % 4 < 2) {
+            pop();
+            this.drawLives();
+            return;
+        }
+        
+        // Schatten
+        fill(0, 0, 0, 40);
+        noStroke();
+        ellipse(2, 4, this.size, this.size * 0.6);
+        
+        // Körper (böse rot)
+        fill('#e74c3c');
+        stroke('#c0392b');
+        strokeWeight(2);
+        
+        // Eckige Form für Gegner
+        beginShape();
+        vertex(0, -this.size / 2);
+        vertex(this.size / 2, 0);
+        vertex(0, this.size / 2);
+        vertex(-this.size / 2, 0);
+        endShape(CLOSE);
+        
+        // Böse Augen
+        fill('#fff');
+        noStroke();
+        circle(-5, -2, 8);
+        circle(5, -2, 8);
+        
+        // Rote Pupillen
+        fill('#000');
+        circle(-4 + this.direction.x * 2, -2 + this.direction.y * 2, 5);
+        circle(6 + this.direction.x * 2, -2 + this.direction.y * 2, 5);
+        
+        // Böser Mund
+        stroke('#000');
+        strokeWeight(2);
+        noFill();
+        arc(0, 6, 10, 6, PI, TWO_PI);
+        
+        pop();
+        
+        this.drawLives();
+    }
+
+    drawLives() {
+        let startX = this.x - 12;
+        let y = this.y - this.size / 2 - 12;
+        
+        for (let i = 0; i < ENEMY_LIVES; i++) {
+            if (i < this.lives) {
+                fill('#e74c3c');
+            } else {
+                fill('#555');
+            }
+            noStroke();
+            rect(startX + i * 6, y, 5, 8, 1);
+        }
+    }
+
+    shoot() {
+        if (frameCount - this.lastShot >= this.shotCooldown) {
+            this.lastShot = frameCount;
+            return new Projektil(
+                this.x + this.direction.x * this.size / 2,
+                this.y + this.direction.y * this.size / 2,
+                this.direction.x,
+                this.direction.y,
+                true
+            );
+        }
+        return null;
+    }
+
+    takeDamage() {
+        if (this.invincibleFrames > 0) return false;
+        this.lives--;
+        this.invincibleFrames = 20;
+        return this.lives <= 0;
+    }
+}
+
+// ============ POWER-UP KLASSE ============
+class PowerUp {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.size = 24;
+        this.lifetime = 600; // 10 Sekunden
+        this.bobOffset = random(TWO_PI);
+    }
+
+    update() {
+        this.lifetime--;
+    }
+
+    draw() {
+        push();
+        translate(this.x, this.y + sin(frameCount * 0.1 + this.bobOffset) * 3);
+        
+        // Glüheffekt
+        let glowColor;
+        let icon;
+        
+        switch(this.type) {
+            case 'health':
+                glowColor = color(46, 204, 113);
+                icon = '❤️';
+                break;
+            case 'invisible':
+                glowColor = color(155, 89, 182);
+                icon = '👻';
+                break;
+            case 'speed':
+                glowColor = color(52, 152, 219);
+                icon = '⚡';
+                break;
+            case 'rapidfire':
+                glowColor = color(231, 76, 60);
+                icon = '🔥';
+                break;
+        }
+        
+        // Äußerer Glow
+        for (let i = 4; i > 0; i--) {
+            fill(red(glowColor), green(glowColor), blue(glowColor), 30 / i);
+            noStroke();
+            circle(0, 0, this.size + i * 8);
+        }
+        
+        // Hintergrund
+        fill(glowColor);
+        stroke(255, 255, 255, 150);
+        strokeWeight(2);
+        circle(0, 0, this.size);
+        
+        // Icon
+        textAlign(CENTER, CENTER);
+        textSize(14);
+        text(icon, 0, 1);
+        
+        pop();
+    }
+
+    isExpired() {
+        return this.lifetime <= 0;
+    }
+
+    collidesWith(player) {
+        let d = dist(this.x, this.y, player.x, player.y);
+        return d < (this.size / 2 + player.size / 2);
+    }
+}
+
+// ============ PARTIKEL FÜR EFFEKTE ============
+class Partikel {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = random(-4, 4);
+        this.vy = random(-4, 4);
+        this.life = 30;
+        this.maxLife = 30;
+        this.color = color;
+        this.size = random(3, 8);
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.95;
+        this.vy *= 0.95;
+        this.life--;
+    }
+
+    draw() {
+        let alpha = map(this.life, 0, this.maxLife, 0, 255);
+        fill(red(this.color), green(this.color), blue(this.color), alpha);
+        noStroke();
+        circle(this.x, this.y, this.size * (this.life / this.maxLife));
+    }
+
+    isDead() {
+        return this.life <= 0;
+    }
+}
+
+// ============ GLOBALE VARIABLEN ============
+let spieler;
+let gegner = [];
+let projektile = [];
+let powerUps = [];
+let partikel = [];
+let score = 0;
+let kills = 0;
+let gameOver = false;
+let gameWon = false;
+let spawnTimer = 0;
+let powerUpTimer = 0;
+let totalEnemiesSpawned = 0;
+const MAX_ENEMIES = 4;
+
+// ============ P5.JS SETUP ============
+function setup() {
+    let canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+    canvas.parent('game-canvas');
+    
+    spieler = new Spieler(100, CANVAS_HEIGHT / 2);
+    
+    // Erste Gegner spawnen
+    for (let i = 0; i < 2; i++) {
+        spawnGegner();
+    }
+}
+
+// ============ GEGNER SPAWNEN ============
+function spawnGegner() {
+    if (totalEnemiesSpawned >= MAX_ENEMIES) return; // Keine weiteren Gegner spawnen
+    
+    let x, y;
+    let side = Math.floor(random(4));
+    
+    switch(side) {
+        case 0: // Oben
+            x = random(50, CANVAS_WIDTH - 50);
+            y = 30;
+            break;
+        case 1: // Rechts
+            x = CANVAS_WIDTH - 30;
+            y = random(50, CANVAS_HEIGHT - 50);
+            break;
+        case 2: // Unten
+            x = random(50, CANVAS_WIDTH - 50);
+            y = CANVAS_HEIGHT - 30;
+            break;
+        case 3: // Links
+            x = 30;
+            y = random(50, CANVAS_HEIGHT - 50);
+            break;
+    }
+    
+    // Nicht zu nah am Spieler spawnen
+    if (dist(x, y, spieler.x, spieler.y) > 150) {
+        gegner.push(new Gegner(x, y));
+        totalEnemiesSpawned++;
+    }
+}
+
+// ============ POWER-UP SPAWNEN ============
+function spawnPowerUp() {
+    let types = ['health', 'invisible', 'speed', 'rapidfire'];
+    let type = random(types);
+    let x = random(50, CANVAS_WIDTH - 50);
+    let y = random(50, CANVAS_HEIGHT - 50);
+    
+    // Nicht auf Spieler oder Gegner spawnen
+    if (dist(x, y, spieler.x, spieler.y) > 80) {
+        powerUps.push(new PowerUp(x, y, type));
+    }
+}
+
+// ============ EXPLOSION ERZEUGEN ============
+function createExplosion(x, y, col, count = 15) {
+    for (let i = 0; i < count; i++) {
+        partikel.push(new Partikel(x, y, col));
+    }
+}
+
+// ============ P5.JS DRAW LOOP ============
+function draw() {
+    // Hintergrund mit Muster
+    background('#1a1a2e');
+    
+    // Gitter-Muster
+    stroke(255, 255, 255, 10);
+    strokeWeight(1);
+    for (let x = 0; x < CANVAS_WIDTH; x += 40) {
+        line(x, 0, x, CANVAS_HEIGHT);
+    }
+    for (let y = 0; y < CANVAS_HEIGHT; y += 40) {
+        line(0, y, CANVAS_WIDTH, y);
+    }
+    
+    if (gameOver) {
+        drawGameOver();
+        return;
+    }
+    
+    if (gameWon) {
+        drawGameWon();
+        return;
+    }
+    
+    // Spieler Update
+    spieler.update();
+    
+    // Schießen mit Pfeiltasten
+    if (keyIsDown(LEFT_ARROW) || keyIsDown(RIGHT_ARROW) || 
+        keyIsDown(UP_ARROW) || keyIsDown(DOWN_ARROW)) {
+        let proj = spieler.shoot();
+        if (proj) projektile.push(proj);
+    }
+    
+    // Gegner Update und Schießen
+    gegner.forEach(g => {
+        g.update(spieler.x, spieler.y);
+        let proj = g.shoot();
+        if (proj) projektile.push(proj);
+    });
+    
+    // Projektile Update
+    projektile = projektile.filter(p => {
+        p.update();
+        
+        // Spieler-Projektile treffen Gegner
+        if (!p.isEnemy) {
+            for (let i = gegner.length - 1; i >= 0; i--) {
+                let g = gegner[i];
+                if (dist(p.x, p.y, g.x, g.y) < g.size / 2 + p.size) {
+                    if (g.takeDamage()) {
+                        // Gegner besiegt
+                        createExplosion(g.x, g.y, color(231, 76, 60), 20);
+                        gegner.splice(i, 1);
+                        score += 100;
+                        kills++;
+                        updateHUD();
+                        
+                        // Gewinnbedingung prüfen: Alle 4 Gegner besiegt
+                        if (kills >= MAX_ENEMIES) {
+                            gameWon = true;
+                        }
+                    } else {
+                        createExplosion(p.x, p.y, color(255, 200, 100), 5);
+                    }
+                    return false; // Projektil entfernen
+                }
+            }
+        }
+        
+        // Gegner-Projektile treffen Spieler
+        if (p.isEnemy && !spieler.invisible) {
+            if (dist(p.x, p.y, spieler.x, spieler.y) < spieler.size / 2 + p.size) {
+                if (spieler.takeDamage()) {
+                    gameOver = true;
+                }
+                createExplosion(spieler.x, spieler.y, color(46, 204, 113), 10);
+                updateHUD();
+                return false;
+            }
+        }
+        
+        return !p.isOffScreen();
+    });
+    
+    // Power-Ups Update
+    powerUps = powerUps.filter(pu => {
+        pu.update();
+        
+        if (pu.collidesWith(spieler)) {
+            spieler.applyPowerUp(pu.type);
+            createExplosion(pu.x, pu.y, color(255, 255, 255), 10);
+            score += 25;
+            updateHUD();
+            return false;
+        }
+        
+        return !pu.isExpired();
+    });
+    
+    // Partikel Update
+    partikel = partikel.filter(p => {
+        p.update();
+        return !p.isDead();
+    });
+    
+    // Spawning
+    spawnTimer++;
+    if (spawnTimer >= 180 && totalEnemiesSpawned < MAX_ENEMIES) { // Alle 3 Sekunden, bis max 4 Gegner gespawnt
+        spawnGegner();
+        spawnTimer = 0;
+    }
+    
+    powerUpTimer++;
+    if (powerUpTimer >= 300 && powerUps.length < 3) { // Alle 5 Sekunden, max 3 Power-Ups
+        spawnPowerUp();
+        powerUpTimer = 0;
+    }
+    
+    // ===== ZEICHNEN =====
+    
+    // Power-Ups
+    powerUps.forEach(pu => pu.draw());
+    
+    // Partikel
+    partikel.forEach(p => p.draw());
+    
+    // Projektile
+    projektile.forEach(p => p.draw());
+    
+    // Gegner
+    gegner.forEach(g => g.draw());
+    
+    // Spieler
+    spieler.draw();
+    
+    // Score
+    updateHUD();
+}
+
+// ============ HUD AKTUALISIEREN ============
+function updateHUD() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('kills').textContent = kills;
+    document.getElementById('powerups').textContent = spieler.getActivePowerUps();
+}
+
+// ============ GAME OVER SCREEN ============
+function drawGameOver() {
+    // Dunkler Overlay
+    fill(0, 0, 0, 180);
+    noStroke();
+    rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Game Over Text
+    textAlign(CENTER, CENTER);
+    fill('#e74c3c');
+    textSize(48);
+    textStyle(BOLD);
+    text('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+    
+    fill('#fff');
+    textSize(24);
+    textStyle(NORMAL);
+    text(`Punkte: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+    text(`Gegner besiegt: ${kills}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
+    
+    fill('#2ecc71');
+    textSize(18);
+    text('Drücke R zum Neustarten', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
+}
+
+// ============ GAME WON SCREEN ============
+function drawGameWon() {
+    // Goldener Overlay
+    fill(0, 0, 0, 150);
+    noStroke();
+    rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    
+    // Sieges-Partikel
+    if (frameCount % 5 === 0) {
+        createExplosion(random(CANVAS_WIDTH), random(CANVAS_HEIGHT), color(255, 215, 0), 3);
+    }
+    partikel = partikel.filter(p => {
+        p.update();
+        p.draw();
+        return !p.isDead();
+    });
+    
+    // Gewonnen Text
+    textAlign(CENTER, CENTER);
+    fill('#f1c40f');
+    textSize(52);
+    textStyle(BOLD);
+    text('🏆 GEWONNEN! 🏆', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+    
+    fill('#fff');
+    textSize(28);
+    textStyle(NORMAL);
+    text(`Alle ${MAX_ENEMIES} Gegner besiegt!`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+    
+    fill('#2ecc71');
+    textSize(24);
+    text(`Endpunktzahl: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
+    
+    fill('#3498db');
+    textSize(18);
+    text('Drücke R zum Neustarten', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
+}
+
+// ============ NEUSTART ============
+function keyPressed() {
+    if ((gameOver || gameWon) && (key === 'r' || key === 'R')) {
+        // Spiel zurücksetzen
+        spieler = new Spieler(100, CANVAS_HEIGHT / 2);
+        gegner = [];
+        projektile = [];
+        powerUps = [];
+        partikel = [];
+        score = 0;
+        kills = 0;
+        gameOver = false;
+        gameWon = false;
+        spawnTimer = 0;
+        powerUpTimer = 0;
+        totalEnemiesSpawned = 0;
+        
+        for (let i = 0; i < 2; i++) {
+            spawnGegner();
+        }
+        
+        updateHUD();
+    }
+}
+    </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GIF auf Canvas</title>
+   <script src="./p5.js"></script>
+ 
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script>
+        var width = window.innerWidth;
+        var height = window.innerHeight;
+
+        var stage = new Konva.Stage({
+            container: 'container',
+            width: width,
+            height: height,
+        });
+
+        var layer = new Konva.Layer();
+        stage.add(layer);
+
+        var canvas = document.createElement('canvas');
+
+        function onDrawFrame(ctx, frame) {
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.drawImage(frame.buffer, 0, 0);
+            layer.draw();
+        }
+
+        gifler('./tenor-108468863.gif').frames(canvas, onDrawFrame);
+
+        var image = new Konva.Image({
+            image: canvas,
+        });
+        layer.add(image);
+    </script>
+</body>
+</html>
